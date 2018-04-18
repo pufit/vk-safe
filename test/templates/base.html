@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Test</title>
+</head>
+<body>
+
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/2.3.10/seedrandom.min.js"></script>
+<script>
+    function rng_get_byte() {
+        return parseInt(255 * Math.random());
+    }
+
+    function rng_get_bytes(ba) {
+        var i;
+        for (i = 0; i < ba.length; ++i) ba[i] = rng_get_byte();
+    }
+
+    function SecureRandom() {
+    }
+
+    SecureRandom.prototype.nextBytes = rng_get_bytes;
+
+</script>
+<script src="{{ url_for('static', filename='sjcl.js') }}"></script>
+<script src="{{ url_for('static', filename='jsbn.js') }}"></script>
+<script src="{{ url_for('static', filename='jsbn2.js') }}"></script>
+<script src="{{ url_for('static', filename='rsa.js') }}"></script>
+<script src="{{ url_for('static', filename='rsa2.js') }}"></script>
+<script src="{{ url_for('static', filename='vk_safe.js') }}"></script>
+
+<form name="rsatest" onSubmit='do_encrypt();return false;'>
+    Plaintext (string):<br>
+    <textarea name="plaintext" type="text" value="test" size=60></textarea><br>
+    <input type="button" value="encrypt" onClick="do_encrypt();">
+    <p>
+        Ciphertext:<br>
+        <textarea name="ciphertext" rows=4 cols=70></textarea><br>
+        <input type="button" value="decrypt" onClick="do_decrypt();">
+    <p>
+        Decrypted Plaintext:<br>
+    <textarea name="decrypted" type="text" size=60></textarea>
+</form>
+
+</body>
+</html>
