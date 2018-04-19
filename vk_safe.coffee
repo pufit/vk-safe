@@ -24,33 +24,31 @@ encrypt = (text) ->
   key = JSON.stringify(sjcl.random.randomWords(3))
   enc_key = publ.encrypt(key)
   if enc_key
-    "|MESSAGE|\n#{ linebrk(enc_key, 32) }\n|MESSAGE BODY|\n#{ linebrk(sjcl.encrypt(key, text), 32) }\n|END MESSAGE|"
+    "|MESSAGE|\n
+#{ linebrk(enc_key, 32) }\n
+|KEY FOR SENDER|\n
+#{ linebrk(rsa.encrypt(key), 32)}\n
+|MESSAGE BODY|\n
+#{ linebrk(sjcl.encrypt(key, text), 32) }\n
+|END MESSAGE|"
 
 decrypt = (text) ->
-  raw = text.split('|')
-  for line, i in raw
-    line = line.trim()
-    if line == 'MESSAGE BODY'
-      enc_key = ''
-      for key_line in raw.slice(1, i)
-        enc_key += key_line
-      enc_msg = ''
-      for msg_line in raw.slice(i + 1, -1)
-        enc_msg += msg_line
+  raw = (line.trim() for line in text.split('|'))
+  enc_key = raw.slice(raw.indexOf('MESSAGE') + 1, raw.indexOf('KEY FOR SENDER'))[0].replace(/\s|\n/g, '')
+  enc_msg = raw.slice(raw.indexOf('MESSAGE BODY') + 1, raw.indexOf('END MESSAGE'))[0].replace(/\s|\n/g, '')
   key = rsa.decrypt(enc_key)
   return sjcl.decrypt(key, enc_msg)
 
 get_invite_text = () ->
-  "|INVITE|\n#{ invite_msg }\n|INVITE BODY|\n#{ linebrk(rsa.n.toString(16), 32) }\n|END INVITE|"
+  "|INVITE|\n
+#{ invite_msg }\n
+|INVITE BODY|\n
+#{ linebrk(rsa.n.toString(16), 32) }\n
+|END INVITE|"
 
 accept_invite = (invite) ->
-  raw = invite.split('|')
-  for line, i in raw
-    line = line.trim()
-    if line == 'INVITE BODY'
-      key = ''
-      for key_line in raw.slice(i + 1, -1)
-        key += key_line
+  raw = (line.trim() for line in invite.split('|'))
+  key = raw.slice(raw.indexOf('INVITE BODY') + 1, raw.indexOf('END INVITE'))[0].replace(/\s|\n/g, '')
   publ.setPublic(key, rsa.e.toString(16))
   localStorage.setItem('vkSafeEXT-public', JSON.stringify([key, rsa.e.toString(16)]))
   true

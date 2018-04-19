@@ -27,54 +27,45 @@
     key = JSON.stringify(sjcl.random.randomWords(3));
     enc_key = publ.encrypt(key);
     if (enc_key) {
-      return "|MESSAGE|\n" + (linebrk(enc_key, 32)) + "\n|MESSAGE BODY|\n" + (linebrk(sjcl.encrypt(key, text), 32)) + "\n|END MESSAGE|";
+      return "|MESSAGE|\n " + (linebrk(enc_key, 32)) + "\n |KEY FOR SENDER|\n " + (linebrk(rsa.encrypt(key), 32)) + "\n |MESSAGE BODY|\n " + (linebrk(sjcl.encrypt(key, text), 32)) + "\n |END MESSAGE|";
     }
   };
 
   decrypt = function(text) {
-    var enc_key, enc_msg, i, j, k, key, key_line, l, len, len1, len2, line, msg_line, raw, ref, ref1;
-    raw = text.split('|');
-    for (i = j = 0, len = raw.length; j < len; i = ++j) {
-      line = raw[i];
-      line = line.trim();
-      if (line === 'MESSAGE BODY') {
-        enc_key = '';
-        ref = raw.slice(1, i);
-        for (k = 0, len1 = ref.length; k < len1; k++) {
-          key_line = ref[k];
-          enc_key += key_line;
-        }
-        enc_msg = '';
-        ref1 = raw.slice(i + 1, -1);
-        for (l = 0, len2 = ref1.length; l < len2; l++) {
-          msg_line = ref1[l];
-          enc_msg += msg_line;
-        }
+    var enc_key, enc_msg, key, line, raw;
+    raw = (function() {
+      var i, len, ref, results;
+      ref = text.split('|');
+      results = [];
+      for (i = 0, len = ref.length; i < len; i++) {
+        line = ref[i];
+        results.push(line.trim());
       }
-    }
+      return results;
+    })();
+    enc_key = raw.slice(raw.indexOf('MESSAGE') + 1, raw.indexOf('KEY FOR SENDER'))[0].replace(/\s|\n/g, '');
+    enc_msg = raw.slice(raw.indexOf('MESSAGE BODY') + 1, raw.indexOf('END MESSAGE'))[0].replace(/\s|\n/g, '');
     key = rsa.decrypt(enc_key);
     return sjcl.decrypt(key, enc_msg);
   };
 
   get_invite_text = function() {
-    return "|INVITE|\n" + invite_msg + "\n|INVITE BODY|\n" + (linebrk(rsa.n.toString(16), 32)) + "\n|END INVITE|";
+    return "|INVITE|\n " + invite_msg + "\n |INVITE BODY|\n " + (linebrk(rsa.n.toString(16), 32)) + "\n |END INVITE|";
   };
 
   accept_invite = function(invite) {
-    var i, j, k, key, key_line, len, len1, line, raw, ref;
-    raw = invite.split('|');
-    for (i = j = 0, len = raw.length; j < len; i = ++j) {
-      line = raw[i];
-      line = line.trim();
-      if (line === 'INVITE BODY') {
-        key = '';
-        ref = raw.slice(i + 1, -1);
-        for (k = 0, len1 = ref.length; k < len1; k++) {
-          key_line = ref[k];
-          key += key_line;
-        }
+    var key, line, raw;
+    raw = (function() {
+      var i, len, ref, results;
+      ref = invite.split('|');
+      results = [];
+      for (i = 0, len = ref.length; i < len; i++) {
+        line = ref[i];
+        results.push(line.trim());
       }
-    }
+      return results;
+    })();
+    key = raw.slice(raw.indexOf('INVITE BODY') + 1, raw.indexOf('END INVITE'))[0].replace(/\s|\n/g, '');
     publ.setPublic(key, rsa.e.toString(16));
     localStorage.setItem('vkSafeEXT-public', JSON.stringify([key, rsa.e.toString(16)]));
     return true;
@@ -99,12 +90,12 @@
   };
 
   history_on_update = function(group) {
-    var is_user, j, len, message, messages, ref, results;
+    var i, is_user, len, message, messages, ref, results;
     is_user = group.target.children[1].children[0].innerText.split(' ')[0] === $('.top_profile_name').html();
     messages = group.target.children[1].children[1].children;
     results = [];
-    for (j = 0, len = messages.length; j < len; j++) {
-      message = messages[j];
+    for (i = 0, len = messages.length; i < len; i++) {
+      message = messages[i];
       if (ref = message.dataset['msgid'], indexOf.call(processed, ref) < 0) {
         processed.push(message.dataset['msgid']);
         message = message.textContent.trim();
