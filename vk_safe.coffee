@@ -59,20 +59,47 @@ parse_url = (href) ->
 
 
 get_id = () ->
-  parse_url(location.href)['search'].match(/sel=[0-9]+/)[0].split('=')[1]
+  res = parse_url(location.href)['search'].match(/sel=[0-9]+/)
+  res[0].split('=')[1] if res
 
 
 generate_key = () ->
-  # TODO: key from localStorage
   password = ''
-  unless password == ''
+  while not password
     password = prompt(button_click_text, '')
+  password += id
   Math.seedrandom(password)
   rsa.generate(1024, '10001');
   Math.seedrandom((new Date()).toString())
-  localStorage.setItem('vkSafeEXT-private', JSON.stringify([rsa.n.toString(16), rsa.d.toString(16),
-    rsa.e.toString(16)]))
+  dump_to_storage()
 
+
+load_from_storage = () =>
+  body = JSON.parse(localStorage.getItem('vkSafeEXT'))
+  if not body
+    return false
+  if not body[id]
+    return false
+  p = body[id]['public']
+  s = body[id]['private']
+  publ.setPublic(p[0], p[1]) if p
+  rsa.setPrivate(s[0], s[1], s[2]) if s
+  @is_safe = body[id]['isSafe']
+  @waiting_for_secure = body[id]['waitingForSecure']
+  return true if s or p
+
+
+dump_to_storage = () ->
+  body = if localStorage.getItem('vkSafeEXT') then JSON.parse(localStorage.getItem('vkSafeEXT')) else {}
+  body[id] = {
+    isSafe: false
+    waitingForSecure: false
+  } if not body[id]
+  body[id]['public'] = [publ.n.toString(16), publ.e.toString(16)] if publ.n
+  body[id]['private'] = [rsa.n.toString(16), rsa.e.toString(16), rsa.d.toString(16)] if rsa.n
+  body[id]['isSafe'] = is_safe
+  body[id]['waitingForSecure'] = waiting_for_secure
+  localStorage.setItem('vkSafeEXT', JSON.stringify(body))
 
 encrypt = (text) ->
   key = JSON.stringify(sjcl.random.randomWords(3))
@@ -111,7 +138,7 @@ accept_invite = (invite) ->
   raw = (line.trim() for line in invite.split('|'))
   key = raw.slice(raw.indexOf('INVITE BODY') + 1, raw.indexOf('END INVITE'))[0].replace(/\s|\n/g, '')
   publ.setPublic(key, rsa.e.toString(16))
-  localStorage.setItem('vkSafeEXT-public', JSON.stringify([key, rsa.e.toString(16)]))
+  dump_to_storage()
   true
 
 
@@ -127,29 +154,35 @@ history_on_update = () ->
         handler(message.children[0], self)
 
 
-handler = (message, self) ->
-  if content[1] == 'INVITE' and not self
-    if not window.waiting_for_secure
+handler = (message, self) =>
+  content = (line.trim() for line in message.innerText.split('|'))
+  if content[1] == 'INVITE'
+
+    if self
+      message.innerText = '[vkSafe] Заявка на шифрование отправлена.'
+      return
+
+    if @is_safe
+      return
+
+    if not @waiting_for_secure
       if not confirm('Пользователь отправил заявку на шифрование переписки')
         return
       generate_key()
+      generate_safe_form()
       send_invite()
     message.innerText = '[vkSafe] Заявка на шифрование принята'
     accept_invite(message.textContent)
-    window.is_safe = true
-    generate_safe_form()
+    @is_safe = true
     return
-  if not window.is_safe
-    return
-  content = (line.trim() for line in message.innerText.split('|'))
   if content[1] == 'MESSAGE'
     try
       message.innerText = decrypt(message.innerText, self)
       message.style.backgroundColor = '#e4ffe3'
     catch
       message.style.backgroundColor = '#ffe3e3'
-  else if content[1] == 'INVITE'
-    message.innerText = '[vkSafe] Заявка на шифрование отправлена.'
+      message.innerText = '[vkSafe] Не удалось дешифровать сообщение'
+
 
 
 safe_send = () ->
@@ -162,7 +195,9 @@ safe_send = () ->
   , 100)
 
 
-send_invite = () ->
+send_invite = () =>
+  @waiting_for_secure = true
+  dump_to_storage()
   text_field.html(get_invite_text())
   $('._im_send').click()
   setTimeout( () ->
@@ -187,26 +222,45 @@ generate_safe_form = () ->
   window.safe_field = safe_field
 
 
-processed = []
-window.is_safe = true
-window.waiting_for_secure = false
-
-if not window.is_safe
+add_button = () ->
   button = document.createElement('button')
   button.innerHTML = 'Шифровать переписку'
   button.style.position = 'absolute'
   button.style.left = 0
   button.style.bottom = '40px'
+  button.className = 'vkSafeButton'
   button.onclick = () ->
     generate_key()
+    generate_safe_form()
     send_invite()
+  $('.side_bar').append(button)
 
 
-history = $('._im_peer_history')
-if window.is_safe
+init = () =>
+  @processed = []
+  @is_safe = false
+  @ext_started = true
+  @waiting_for_secure = false
+
+  @id = get_id()
+
+  if not @id
+    return
+
+  load_from_storage()
+
+
+  history = $('._im_peer_history')
   history.bind('DOMSubtreeModified', () ->
     history_on_update()
   )
+
+  if not @is_safe or not @waiting_for_secure
+    add_button()
+
+
+
+init()
 
 
 window.processed = processed
@@ -218,3 +272,6 @@ window.get_invite_text = get_invite_text
 window.accept_invite = accept_invite
 window.parse_url = parse_url
 window.generate_key = generate_key
+window.load_from_storage = load_from_storage
+window.rsa = rsa
+window.publ = publ
