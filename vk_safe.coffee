@@ -26,9 +26,6 @@ setInterval(function(){
 """
 
 
-rsa = new RSAKey()
-publ = new RSAKey()
-
 window.sjcl = sjcl
 
 invite_msg = "Данный пользователь предложил Вам шифровать\n
@@ -134,15 +131,21 @@ get_invite_text = () ->
 |END INVITE|"
 
 
-accept_invite = (invite) ->
+accept_invite = (invite) =>
   raw = (line.trim() for line in invite.split('|'))
   key = raw.slice(raw.indexOf('INVITE BODY') + 1, raw.indexOf('END INVITE'))[0].replace(/\s|\n/g, '')
   publ.setPublic(key, rsa.e.toString(16))
+  @is_safe = true
+  b = $('.vkSafeButton')
+  if b
+    b.remove()
   dump_to_storage()
   true
 
 
 history_on_update = () ->
+  if loc != location.href
+    return
   messages = $('._im_mess')
   for message in messages
     if message.dataset['msgid'] not in processed
@@ -156,31 +159,27 @@ history_on_update = () ->
 
 handler = (message, self) =>
   content = (line.trim() for line in message.innerText.split('|'))
+
   if content[1] == 'INVITE'
+    if not @is_safe and not self
+      if not @waiting_for_secure and confirm('Пользователь отправил заявку на шифрование переписки. Принять её?')
+        generate_key()
+        generate_safe_form()
+        send_invite()
+      accept_invite(message.textContent)
 
     if self
-      message.innerText = '[vkSafe] Заявка на шифрование отправлена.'
-      return
-
-    if @is_safe
-      return
-
-    if not @waiting_for_secure
-      if not confirm('Пользователь отправил заявку на шифрование переписки')
+        message.innerText = '[vkSafe] Заявка на шифрование отправлена.'
         return
-      generate_key()
-      generate_safe_form()
-      send_invite()
-    message.innerText = '[vkSafe] Заявка на шифрование принята'
-    accept_invite(message.textContent)
-    @is_safe = true
+    message.innerText = '[vkSafe] Заявка на шифрование'
     return
+
   if content[1] == 'MESSAGE'
     try
       message.innerText = decrypt(message.innerText, self)
-      message.style.backgroundColor = '#e4ffe3'
+      message.style.backgroundColor = 'rgba(0, 255, 0, 0.2)'
     catch
-      message.style.backgroundColor = '#ffe3e3'
+      message.style.backgroundColor = 'rgba(255, 0, 0, 0.2)'
       message.innerText = '[vkSafe] Не удалось дешифровать сообщение'
 
 
@@ -189,6 +188,16 @@ safe_send = () ->
   if not safe_field.html()
     return
   text_field.html(encrypt(safe_field.html()))
+  $('._im_send').click()
+  setTimeout( () ->
+    text_field.html('')
+  , 100)
+
+
+send = () ->
+  if not safe_field.html()
+    return
+  text_field.html(safe_field.html())
   $('._im_send').click()
   setTimeout( () ->
     text_field.html('')
@@ -205,21 +214,30 @@ send_invite = () =>
   , 100)
 
 
-generate_safe_form = () ->
-  safe_field = $('._im_text')
-  text_field = safe_field.clone()
-  text_field.css({'display': 'none'})
-  $('._im_text_wrap').append(text_field)
-  safe_field.removeClass('_im_text')
-  safe_field.addClass('vkSafeField')
-  safe_field.keydown( (e) ->
+generate_safe_form = () =>
+  if $('.vkSafeField').length
+    return
+
+  @safe_field = $('._im_text')
+  @text_field = @safe_field.clone()
+  @text_field.css({'display': 'none'})
+  $('._im_text_wrap').append(@text_field)
+
+  setTimeout( () ->
     $('.placeholder').css({'display': 'none'})
+  , 3000)
+
+  @safe_field.removeClass('_im_text')
+  @safe_field.addClass('vkSafeField')
+  @safe_field.keydown( (e) ->
     if e.keyCode == 13
-      safe_send()
+      if is_safe
+        safe_send()
+      else
+        send()
       return false
   )
-  window.text_field = text_field
-  window.safe_field = safe_field
+
 
 
 add_button = () ->
@@ -237,6 +255,9 @@ add_button = () ->
 
 
 init = () =>
+  @rsa = new RSAKey()
+  @publ = new RSAKey()
+  
   @processed = []
   @is_safe = false
   @ext_started = true
@@ -244,34 +265,54 @@ init = () =>
 
   @id = get_id()
 
-  if not @id
+  if not id
     return
 
   load_from_storage()
 
+  if is_safe
+    generate_safe_form()
 
-  history = $('._im_peer_history')
-  history.bind('DOMSubtreeModified', () ->
-    history_on_update()
-  )
+  @vk_history = $('._im_peer_history')
+  @vk_history.bind('DOMSubtreeModified',  history_on_update)
 
-  if not @is_safe or not @waiting_for_secure
+
+  if not is_safe and not waiting_for_secure
     add_button()
 
 
+  window.processed = processed
+  window.generate_safe_form = generate_safe_form
+  window.safe_send = safe_send
+  window.encrypt = encrypt
+  window.decrypt = decrypt
+  window.get_invite_text = get_invite_text
+  window.accept_invite = accept_invite
+  window.parse_url = parse_url
+  window.generate_key = generate_key
+  window.load_from_storage = load_from_storage
+  window.rsa = rsa
+  window.publ = publ
+
+
+window.init = init
+window.history_on_update = history_on_update
 
 init()
 
 
-window.processed = processed
-window.generate_safe_form = generate_safe_form
-window.safe_send = safe_send
-window.encrypt = encrypt
-window.decrypt = decrypt
-window.get_invite_text = get_invite_text
-window.accept_invite = accept_invite
-window.parse_url = parse_url
-window.generate_key = generate_key
-window.load_from_storage = load_from_storage
-window.rsa = rsa
-window.publ = publ
+loc = location.href
+
+setInterval( () ->
+  if location.href != loc
+    loc = location.href
+    b = $('.vkSafeButton')
+    if window.vk_history
+      vk_history.unbind('DOMSubtreeModified', history_on_update)
+    if b
+      b.remove()
+    init()
+    if is_safe
+      history_on_update()
+    console.log(loc)
+, 100)
